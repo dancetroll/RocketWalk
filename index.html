@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Walk Recorder</title>
+    <style>
+        #map {
+            height: 80vh;
+            width: 100%;
+        }
+        #controls {
+            text-align: center;
+            margin: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+        }
+        #history {
+            text-align: center;
+            margin: 20px;
+        }
+        #history ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #history li {
+            padding: 5px;
+        }
+        #filterControls {
+            text-align: center;
+            margin: 20px;
+        }
+    </style>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB9j0trU7pRua4LKfkmtsN27bDfbtjnR9E&libraries=geometry"></script>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="controls">
+        <button id="startButton" onclick="startRecording()">Start Recording</button>
+        <button id="stopButton" onclick="stopRecording()" disabled>Stop Recording</button>
+    </div>
+    <div id="filterControls">
+        <input type="date" id="filterDate">
+        <button onclick="filterWalks()">Filter Walks (Include walks back to this date)</button>
+    </div>
+    <div id="history">
+        <h2>Recorded Walks</h2>
+        <ul id="walkList"></ul>
+    </div>
+	<script type="module">
+
+  // Import the functions you need from the SDKs you need
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-app.js";
+
+  // TODO: Add SDKs for Firebase products that you want to use
+
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+
+  // Your web app's Firebase configuration
+
+  const firebaseConfig = {
+
+    apiKey: "AIzaSyAtFJK07k4SkbbAQbfHbu3J7KcoORuN03M",
+
+    authDomain: "rocket-walk.firebaseapp.com",
+
+    projectId: "rocket-walk",
+
+    storageBucket: "rocket-walk.appspot.com",
+
+    messagingSenderId: "223149163774",
+
+    appId: "1:223149163774:web:242e4609c17b4afb4b91af"
+
+  };
+
+
+  // Initialize Firebase
+
+  const app = initializeApp(firebaseConfig);
+
+</script>
+    <script>
+        let map;
+        let userPath;
+        let userCoords = [];
+        let watchID;
+
+        function initMap() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        const pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+
+                        map = new google.maps.Map(document.getElementById('map'), {
+                            center: pos,
+                            zoom: 15
+                        });
+
+                        userPath = new google.maps.Polyline({
+                            path: userCoords,
+                            geodesic: true,
+                            strokeColor: '#FF0000',
+                            strokeOpacity: 1.0,
+                            strokeWeight: 2
+                        });
+                        userPath.setMap(map);
+                        loadWalks();
+                    },
+                    () => {
+                        handleLocationError(true, map.getCenter());
+                    }
+                );
+            } else {
+                // Browser doesn't support Geolocation
+                handleLocationError(false, map.getCenter());
+            }
+        }
+
+        function handleLocationError(browserHasGeolocation, pos) {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: -34.397, lng: 150.644 },
+                zoom: 15
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                map: map
+            });
+            infoWindow.setPosition(pos);
+            infoWindow.setContent(
+                browserHasGeolocation
+                    ? 'Error: The Geolocation service failed.'
+                    : 'Error: Your browser doesn\'t support geolocation.'
+            );
+        }
+
+        function startRecording() {
+            if (navigator.geolocation) {
+                watchID = navigator.geolocation.watchPosition(updatePosition, handleError, {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                });
+                document.getElementById('startButton').disabled = true;
+                document.getElementById('stopButton').disabled = false;
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        function stopRecording() {
+            if (watchID) {
+                navigator.geolocation.clearWatch(watchID);
+                watchID = null;
+                saveWalk();
+                userCoords = [];
+                userPath.setPath(userCoords);
+                document.getElementById('startButton').disabled = false;
+                document.getElementById('stopButton').disabled = true;
+            }
+        }
+
+        function updatePosition(position) {
+            const pos = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+
+            userCoords.push(pos);
+            userPath.setPath(userCoords);
+            map.setCenter(pos);
+        }
+
+        function handleError(error) {
+            console.warn(`ERROR(${error.code}): ${error.message}`);
+        }
+
+        function saveWalk() {
+            const walkData = {
+                timestamp: new Date().toISOString(),
+                path: userCoords
+            };
+            let walks = JSON.parse(localStorage.getItem('walks')) || [];
+            walks.push(walkData);
+            localStorage.setItem('walks', JSON.stringify(walks));
+            loadWalks();
+        }
+
+        function loadWalks(startDate = null) {
+            const walkList = document.getElementById('walkList');
+            walkList.innerHTML = '';
+            const walks = JSON.parse(localStorage.getItem('walks')) || [];
+            const today = new Date();
+
+            walks.forEach((walk, index) => {
+                const walkDate = new Date(walk.timestamp);
+                if (startDate && walkDate < new Date(startDate)) {
+                    return;
+                }
+                const listItem = document.createElement('li');
+                listItem.textContent = `Walk ${index + 1} - ${walkDate.toLocaleString()}`;
+                walkList.appendChild(listItem);
+            });
+        }
+
+        function filterWalks() {
+            const filterDate = document.getElementById('filterDate').value;
+            if (filterDate) {
+                loadWalks(filterDate);
+            } else {
+                loadWalks();
+            }
+        }
+function saveWalk() {
+    const walkData = {
+        timestamp: new Date().toISOString(),
+        path: userCoords
+    };
+    db.collection("walks").add(walkData)
+        .then(() => {
+            console.log("Walk recorded successfully!");
+            loadWalks();
+        })
+        .catch((error) => {
+            console.error("Error adding document: ", error);
+        });
+}
+
+function loadWalks(dateFilter = null) {
+    const walkList = document.getElementById('walkList');
+    walkList.innerHTML = '';
+    let query = db.collection("walks");
+    if (dateFilter) {
+        const start = new Date(dateFilter);
+        const end = new Date(dateFilter);
+        end.setDate(end.getDate() + 1);
+        query = query.where("timestamp", ">=", start.toISOString())
+                      .where("timestamp", "<", end.toISOString());
+    }
+    query.get().then((querySnapshot) => {
+        querySnapshot.forEach((doc) => {
+            const walk = doc.data();
+            const walkDate = new Date(walk.timestamp);
+            const listItem = document.createElement('li');
+            listItem.textContent = `Walk - ${walkDate.toLocaleString()}`;
+            walkList.appendChild(listItem);
+        });
+    });
+}
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
+
+
+
